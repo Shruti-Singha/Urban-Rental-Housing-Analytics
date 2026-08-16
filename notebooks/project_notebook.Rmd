@@ -4,4 +4,74 @@ author: "Shruti Singha"
 date: "`r Sys.Date()`"
 output: html_document
 ---
+# 1. Project Definition
+## 1.a. Project Theme
 
+The selected project theme is Urban Rental Housing Price Analytics, with Mumbai selected as the geographical focus of the analysis.
+
+The project aims to develop a rental price prediction model using property characteristics , geographical location, and neighbourhood amenities.
+
+The analysis will subsequently compare observed rental prices with model-predicted prices to identify potentially over-priced and under-priced properties and neighbourhoods.
+
+The findings will be considered from both tenant and investor perspectives.
+
+## 1.b. Selected Analysis Type
+## Predictive Analytics
+
+Predictive analytics has been selected as the first type of analytics to investigate.
+
+This choice is motivated by the primary objective of estimating the expected monthly rental price of a residential property based on its characteristics, location, and surrounding neighbourhood.
+
+
+The predicted rental price can be subsequently compared with the observed market rent to support the identification of potentially over-priced and under-priced properties.
+
+## 1.c. Research Question
+
+Can monthly rental prices of residential properties in Mumbai be predicted using property characteristics, geographic location, and accessibility to neighbourhood amenities?
+
+## 1.d. Required Datasets
+
+To answer the research question, the project will require data describing individual rental properties as well as information about their surrounding neighbourhoods.
+
+The rental property dataset should ideally contain:
+Monthly rental price
+Property type
+Number of bedrooms
+Number of bathrooms
+Property area
+Furnishing status
+Floor information (eg. sqft area, super buildup area)
+Parking availability
+Locality or neighbourhood
+Geographic coordinates, if available
+
+The monthly rental price will be used as the target variable in the predictive model.
+
+Additional amenities and geographic accessibility will also be investigated, such as:
+Bus stops
+Metro Stations
+Railway Stations
+Airport
+Schools
+Hospitals
+Parks
+
+## 1.e. Data Access Plan
+
+The rental property data will initially be investigated through publicly available datasets and open-data repositories.
+
+Potential sources include publicly available real-estate datasets, Kaggle, and relevant government or city open-data portals.
+
+Neighbourhood and amenity information will be investigated through geographic and open-data sources such as OpenStreetMap and relevant Mumbai or Maharashtra open-data portals.
+
+The datasets will be evaluated based on:
+Availability of rental price information
+Availability of relevant property characteristics
+Availability of geographic location
+Number of Observations
+Data completeness
+Geographic coverage of Mumbai
+Compatibility between datasets
+Accessibility and licensing conditions
+
+The final dataset selection will be made after comparing the available data resources.
