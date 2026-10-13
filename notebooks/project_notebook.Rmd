@@ -5,7 +5,7 @@ date: "`r Sys.Date()`"
 output: html_document
 ---
 # 1. Project Definition
-## 1.a. Project Theme
+## 1.1. Project Theme
 
 The selected project theme is Urban Rental Housing Price Analytics, with Mumbai selected as the geographical focus of the analysis.
 
@@ -15,7 +15,7 @@ The analysis will subsequently compare observed rental prices with model-predict
 
 The findings will be considered from both tenant and investor perspectives.
 
-## 1.b. Selected Analysis Type
+## 1.2. Selected Analysis Type
 ## Predictive Analytics
 
 Predictive analytics has been selected as the first type of analytics to investigate.
@@ -25,11 +25,11 @@ This choice is motivated by the primary objective of estimating the expected mon
 
 The predicted rental price can be subsequently compared with the observed market rent to support the identification of potentially over-priced and under-priced properties.
 
-## 1.c. Research Question
+## 1.3. Research Question
 
 Can monthly rental prices of residential properties in Mumbai be predicted using property characteristics, geographic location, and accessibility to neighbourhood amenities?
 
-## 1.d. Required Datasets
+## 1.4. Required Datasets
 
 To answer the research question, the project will require data describing individual rental properties as well as information about their surrounding neighbourhoods.
 
@@ -56,7 +56,7 @@ Schools
 Hospitals
 Parks
 
-## 1.e. Data Access Plan
+## 1.5. Data Access Plan
 
 The rental property data will initially be investigated through publicly available datasets and open-data repositories.
 
@@ -75,3 +75,286 @@ Compatibility between datasets
 Accessibility and licensing conditions
 
 The final dataset selection will be made after comparing the available data resources.
+
+## 1.6 Dataset Investigation
+
+### 1.6.1 Objective
+
+The objective was to identify suitable datasets for predicting monthly residential rents in Mumbai and determine whether they support the research question:
+
+"Can monthly rental prices in Mumbai be predicted using property characteristics and geographic location, with neighbourhood amenities as a planned extension?"
+
+### 1.6.2 Search Strategy and Evaluation
+
+Five CSV files obtained from Kaggle were inspected for price type, property characteristics, Mumbai coverage, location information, record count, data quality and licensing.
+
+| Dataset | Records | Price type | Coverage | Decision |
+| `Mumbai_property_details.csv` | 23,398 | Monthly rent | Mumbai | Selected as main dataset |
+| `data.csv` | 7,691 total; 1,719 Mumbai | Monthly rent | Five cities | Retained for possible external validation |
+| `mumbai_flats.csv` | 9,955 | Sale price | Mumbai | Excluded |
+| `data_for_model.csv` | 7,483 | Sale price | Mumbai | Excluded |
+| `data_v_1.csv` | 2,601 | Sale price | Mumbai | Excluded |
+
+The three sale-price datasets were excluded because sale prices and monthly rents measure different things and cannot be used interchangeably.
+
+### 1.6.3 Selected Dataset
+
+Main dataset: `Mumbai_property_details.csv`
+
+This dataset was selected because it contains the largest identified collection of Mumbai rental listings and a useful range of property characteristics.
+
+The main variables for analysis are:
+
+- Target: Monthly rent (`Price`), to be converted into numeric rupees.
+- Property characteristics: BHK, bathrooms, area, furnishing, balconies, floor, year of construction and property type.
+- Location: To be extracted and standardized from listing titles or descriptions.
+- Additional variable: Building amenities, where sufficiently complete.
+
+### 1.6.4 Key Limitations and Planned Cleaning
+
+The selected dataset has several limitations that must be addressed before modelling:
+
+- Price and area formats: Rent values contain text such as “1.4 Lac”, while the area field appears to contain scraping artefacts.
+- Location: There is no dedicated locality column or geographic coordinates, so locality extraction and standardization will be required.
+- Duplicates and outliers: Repeated listings and implausible values must be identified and reviewed.
+- Missing data: Some variables have substantial missingness; columns with too many missing values may be excluded.
+
+
+### 1.6.5 Investigation Outcome and Next Steps
+
+`Mumbai_property_details.csv` is the provisional main dataset because of its size and range of rental-property variables. `data.csv` is a potential external validation source, while the three sale-price datasets have been excluded.
+
+### 1.6.6 Source Details
+
+Main dataset URL: https://www.kaggle.com/datasets/harshalhonde/property-rental-listings-dataset
+Dataset collaborator: Harshal H (Owner)
+Licence: Attribution 4.0 International (CC BY 4.0)
+
+### 1.7 Initial Dataset Inspection
+The objective of this stage is to import the rental dataset into RStudio and examine its structure, variables, and suitability for predicting monthly rental prices in Mumbai.
+
+
+rent_data <- read.csv("data/Mumbai_property_details.csv")
+head(rent_data)
+names(rent_data)
+dim(rent_data)
+str(rent_data)
+
+
+## 1.7.1 Data Quality Assessment
+
+# Count missing or blank values in each column
+missing_values <- sapply(rent_data, function(x) {
+  sum(is.na(x) | trimws(as.character(x)) == "")
+})
+
+missing_values
+
+# Calculate the percentage of missing values
+missing_percentage <- round(
+  missing_values / nrow(rent_data) * 100, 2
+)
+
+missing_summary <- data.frame(
+  Variable = names(rent_data),
+  Missing_Count = missing_values,
+  Missing_Percentage = missing_percentage
+)
+
+missing_summary
+
+# Check for completely duplicated rows
+sum(duplicated(rent_data))
+
+# Check the number of unique values in each column
+sapply(rent_data, function(x) length(unique(x)))
+
+# Inspect some price and area values
+head(rent_data[, c("Price", "Area", "BHK", "Location")], 10)
+
+
+### Initial Data Quality Findings
+
+The dataset contains 23,405 records and 18 variables. The initial
+assessment identified missing values in several variables and
+3,111 completely duplicated rows.
+
+The Price and Area columns contain no more than two and zero
+missing values, respectively, according to the initial check.
+However, both columns require further inspection because Price
+contains text-based values such as "1.4 Lac", while Area contains
+values such as "750 12800".
+
+Ownership has the highest proportion of missing values (87.89%),
+followed by Balconies (55.62%) and Year.of.Construction (36.40%).
+These variables will require careful consideration before model
+development.
+
+The Location column contains only one unique value, Mumbai.
+Neighbourhood-level information will therefore need to be
+investigated separately.
+
+
+## 1.7.2 Investigating Duplicates and Variable Formats
+
+# Inspect examples of duplicated records
+duplicate_rows <- rent_data[
+  duplicated(rent_data) |
+    duplicated(rent_data, fromLast = TRUE),
+]
+
+head(
+  duplicate_rows[, c("Title", "Price", "Area", "Location")],
+  10
+)
+
+# Check how many records have repeated titles
+sum(duplicated(rent_data$Title))
+
+# Check the number of space-separated parts in Area
+area_parts <- strsplit(
+  trimws(rent_data$Area),
+  "\\s+"
+)
+
+table(lengths(area_parts))
+
+# Inspect distinct Area values
+head(unique(rent_data$Area), 20)
+
+# Check the different transaction types
+table(rent_data$Transaction.Type, useNA = "ifany")
+
+# Inspect the different property types
+table(rent_data$Property.Type, useNA = "ifany")
+
+# Inspect the distinct rent formats
+head(unique(rent_data$Price), 30)
+
+
+## 1.7.3 Further Investigation of Area and Duplicates
+
+# Separate the Area values into parts for investigation
+area_parts <- strsplit(
+  trimws(rent_data$Area),
+  "\\s+"
+)
+
+# Extract the first and second parts where available
+area_first <- sapply(area_parts, `[`, 1)
+
+area_second <- sapply(area_parts, function(x) {
+  if (length(x) >= 2) x[2] else NA_character_
+})
+
+# Count the most common second values
+head(sort(table(area_second), decreasing = TRUE), 15)
+
+# Compare example records with their separated area values
+head(
+  data.frame(
+    Original_Area = rent_data$Area,
+    First_Part = area_first,
+    Second_Part = area_second,
+    Price = rent_data$Price,
+    Title = rent_data$Title
+  ),
+  15
+)
+
+# Count repeated property titles
+sum(duplicated(rent_data$Title))
+
+# Count missing transaction types
+sum(
+  is.na(rent_data$Transaction.Type) |
+    trimws(rent_data$Transaction.Type) == ""
+)
+
+
+## 1.7.4 Preparing Variables for Analysis
+
+# Create a working copy; preserve the original dataset
+rent_clean <- rent_data
+
+# Extract the first number from Area
+area_parts <- strsplit(
+  trimws(rent_clean$Area),
+  "\\s+"
+)
+
+area_first <- sapply(area_parts, `[`, 1)
+
+# Convert the extracted area to numeric
+rent_clean$Area_original <- rent_clean$Area
+rent_clean$Area_sqft <- suppressWarnings(
+  as.numeric(area_first)
+)
+
+# Convert rent prices to numeric rupees
+price_text <- tolower(trimws(rent_clean$Price))
+price_text <- gsub(",", "", price_text)
+
+rent_clean$Monthly_Rent <- sapply(price_text, function(p) {
+  if (is.na(p) || p == "") {
+    return(NA_real_)
+  }
+
+  if (grepl("lac", p)) {
+    return(as.numeric(sub("[^0-9.].*$", "", p)) * 100000)
+  }
+
+  if (grepl("crore|cr", p)) {
+    return(as.numeric(sub("[^0-9.].*$", "", p)) * 10000000)
+  }
+
+  suppressWarnings(
+    as.numeric(gsub("[^0-9.]", "", p))
+  )
+})
+
+# Inspect the new variables
+head(
+  rent_clean[, c(
+    "Price", "Monthly_Rent",
+    "Area_original", "Area_sqft"
+  )],
+  15
+)
+
+# Check conversion failures
+sum(!is.na(rent_clean$Price) &
+      trimws(rent_clean$Price) != "" &
+      is.na(rent_clean$Monthly_Rent))
+
+sum(!is.na(rent_clean$Area_sqft))
+summary(rent_clean$Monthly_Rent)
+summary(rent_clean$Area_sqft)
+
+
+## 1.7.5 Inspecting Repeated Listings
+
+# Examine listings with repeated titles
+title_counts <- sort(
+  table(rent_data$Title),
+  decreasing = TRUE
+)
+
+head(title_counts, 10)
+
+# Inspect the first title that appears multiple times
+example_title <- names(title_counts)[1]
+
+rent_data[
+  rent_data$Title == example_title,
+  c("Title", "Price", "Area", "BHK", "Bathrooms")
+]
+
+# Count exact duplicate rows
+sum(duplicated(rent_data))
+
+# Count records with missing transaction types
+sum(
+  is.na(rent_data$Transaction.Type) |
+    trimws(rent_data$Transaction.Type) == ""
+)
