@@ -358,3 +358,249 @@ sum(
   is.na(rent_data$Transaction.Type) |
     trimws(rent_data$Transaction.Type) == ""
 )
+
+## 1.8 Data Cleaning and Preparation
+
+### 1.8.1 Removing Exact Duplicate Records
+
+Exact duplicate rows can unnecessarily inflate the number of observations and distort descriptive statistics and model evaluation. Therefore, exact duplicate records will be removed from the working dataset.
+
+# Recreating the working copy from the original dataset
+rent_clean <- rent_data
+
+# Record the initial number of rows
+rows_before <- nrow(rent_clean)
+
+# Remove exact duplicate rows
+rent_clean <- rent_clean[!duplicated(rent_clean), ]
+
+# Record the number of rows after removal
+rows_after <- nrow(rent_clean)
+
+# Report the change
+data.frame(
+  Rows_Before = rows_before,
+  Rows_After = rows_after,
+  Duplicate_Rows_Removed = rows_before - rows_after
+)
+
+### 1.8.2 Standardising Rent and Area Variables
+
+The rent and area fields contain text values that must be converted into numeric variables for analysis and modelling. The original fields will be retained to support validation and traceability. Area values will be provisionally extracted from the first numeric component, pending verification of the source format.
+
+# Preserve original values
+rent_clean$Price_original <- rent_clean$Price
+rent_clean$Area_original <- rent_clean$Area
+
+# Convert area using the first space-separated component
+area_parts_clean <- strsplit(
+  trimws(as.character(rent_clean$Area)),
+  "\\s+"
+)
+
+area_first_clean <- sapply(
+  area_parts_clean,
+  function(x) {
+    if (length(x) == 0 || is.na(x[1]) || x[1] == "") {
+      return(NA_character_)
+    }
+    x[1]
+  }
+)
+
+rent_clean$Area_sqft <- suppressWarnings(
+  as.numeric(area_first_clean)
+)
+
+# Convert prices to numeric rupees
+price_text <- tolower(trimws(as.character(rent_clean$Price)))
+price_text <- gsub(",", "", price_text)
+
+rent_clean$Monthly_Rent <- sapply(price_text, function(p) {
+  if (is.na(p) || p == "") {
+    return(NA_real_)
+  }
+
+  if (grepl("lac|lakh", p)) {
+    number <- suppressWarnings(
+      as.numeric(sub("[^0-9.].*$", "", p))
+    )
+    return(number * 100000)
+  }
+
+  if (grepl("crore|cr", p)) {
+    number <- suppressWarnings(
+      as.numeric(sub("[^0-9.].*$", "", p))
+    )
+    return(number * 10000000)
+  }
+
+  suppressWarnings(
+    as.numeric(gsub("[^0-9.]", "", p))
+  )
+})
+
+# Review the converted variables
+head(
+  rent_clean[, c(
+    "Price_original", "Monthly_Rent",
+    "Area_original", "Area_sqft"
+  )],
+  10
+)
+
+summary(rent_clean$Monthly_Rent)
+summary(rent_clean$Area_sqft)
+
+### 1.8.3 Validating Converted Values
+
+After converting rent and area into numeric variables, conversion failures and potentially implausible values will be identified. These records will be reviewed before any exclusions are made, so that genuine high-rent or large-property listings are not automatically treated as errors.
+
+# Find nonblank prices that failed conversion
+failed_rent <- rent_clean[
+  !is.na(rent_clean$Price_original) &
+    trimws(as.character(rent_clean$Price_original)) != "" &
+    is.na(rent_clean$Monthly_Rent),
+  c("Title", "Price_original", "Area_original")
+]
+
+nrow(failed_rent)
+head(failed_rent, 20)
+
+# Find missing or invalid area values
+missing_area <- rent_clean[
+  is.na(rent_clean$Area_sqft) |
+    rent_clean$Area_sqft <= 0,
+  c("Title", "Price_original", "Area_original", "BHK")
+]
+
+nrow(missing_area)
+head(missing_area, 20)
+
+# Inspect the highest converted rents
+rent_clean[
+  order(
+    rent_clean$Monthly_Rent,
+    decreasing = TRUE,
+    na.last = NA
+  ),
+  c("Title", "Price_original", "Monthly_Rent",
+    "Area_sqft", "BHK")
+][1:min(15, sum(!is.na(rent_clean$Monthly_Rent))), ]
+
+# Count missing and blank values in each column
+missing_summary <- data.frame(
+  Variable = names(rent_clean),
+  Missing_Count = sapply(rent_clean, function(x) {
+    sum(is.na(x) | trimws(as.character(x)) == "")
+  })
+)
+
+missing_summary$Missing_Percentage <- round(
+  missing_summary$Missing_Count / nrow(rent_clean) * 100,
+  2
+)
+
+missing_summary <- missing_summary[
+  order(-missing_summary$Missing_Percentage),
+]
+
+missing_summary
+
+# Inspect transaction type categories
+table(rent_clean$Transaction.Type, useNA = "ifany")
+
+# Inspect property titles and prices by transaction type
+aggregate(
+  Monthly_Rent ~ Transaction.Type,
+  data = rent_clean,
+  FUN = function(x) {
+    c(
+      Count = sum(!is.na(x)),
+      Median = median(x, na.rm = TRUE),
+      Maximum = max(x, na.rm = TRUE)
+    )
+  }
+)
+
+# Count listings with prices of ₹10 lakh or more
+sum(
+  !is.na(rent_clean$Monthly_Rent) &
+    rent_clean$Monthly_Rent >= 1000000
+)
+
+# Review examples of these high-priced listings
+high_price_listings <- rent_clean[
+  !is.na(rent_clean$Monthly_Rent) &
+    rent_clean$Monthly_Rent >= 1000000,
+  c(
+    "Title", "Price_original", "Monthly_Rent",
+    "Area_original", "BHK", "Transaction.Type",
+    "Property.Type"
+  )
+]
+
+head(high_price_listings, 25)
+
+### 1.8.4 Applying Cleaning Rules
+
+Following validation, cleaning rules were applied to prepare the dataset for rental price analysis. Records with missing or non-positive rental prices, missing or non-positive property areas, and missing transaction types were excluded from the initial modelling dataset. Records labelled as rental transactions were retained. Potentially extreme rental prices were not automatically removed because they may represent genuine luxury properties in Mumbai. These values will be reviewed further during exploratory data analysis.
+
+# Create a separate dataset for modelling
+rent_model <- rent_clean
+
+# Keep records explicitly labelled as rentals
+rent_model <- rent_model[
+  !is.na(rent_model$Transaction.Type) &
+    trimws(as.character(rent_model$Transaction.Type)) == "Rent",
+]
+
+# Remove records with missing or non-positive rent
+rent_model <- rent_model[
+  !is.na(rent_model$Monthly_Rent) &
+    rent_model$Monthly_Rent > 0,
+]
+
+# Remove records with missing or non-positive area
+rent_model <- rent_model[
+  !is.na(rent_model$Area_sqft) &
+    rent_model$Area_sqft > 0,
+]
+
+# Report the effect of cleaning
+cleaning_summary <- data.frame(
+  Rows_After_Deduplication = nrow(rent_clean),
+  Rows_After_Cleaning = nrow(rent_model),
+  Rows_Removed = nrow(rent_clean) - nrow(rent_model)
+)
+
+cleaning_summary
+
+# Check the resulting dataset
+dim(rent_model)
+summary(rent_model$Monthly_Rent)
+summary(rent_model$Area_sqft)
+
+# Convert categorical predictors to factors
+categorical_vars <- c(
+  "Furnished",
+  "Property.Type",
+  "Ownership",
+  "Facing",
+  "Transaction.Type",
+  "Is.Luxury"
+)
+
+for (v in categorical_vars) {
+  rent_model[[v]] <- as.factor(rent_model[[v]])
+}
+
+# Confirm the variable types
+str(
+  rent_model[, c(
+    "Monthly_Rent", "Area_sqft", "BHK",
+    "Bathrooms", "Furnished", "Property.Type",
+    "Is.Luxury"
+  )]
+)
+
