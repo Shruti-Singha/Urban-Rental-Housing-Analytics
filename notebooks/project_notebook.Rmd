@@ -604,3 +604,313 @@ str(
   )]
 )
 
+# Convert BHK and Bathrooms to numeric
+rent_model$BHK_num <- suppressWarnings(
+  as.numeric(as.character(rent_model$BHK))
+)
+
+rent_model$Bathrooms_num <- suppressWarnings(
+  as.numeric(as.character(rent_model$Bathrooms))
+)
+
+# Standardise furnishing values
+rent_model$Furnished <- trimws(as.character(rent_model$Furnished))
+rent_model$Furnished[rent_model$Furnished == ""] <- NA
+rent_model$Furnished <- as.factor(rent_model$Furnished)
+
+# Remove variables unsuitable for the initial model
+rent_model$Is.Luxury <- NULL
+rent_model$Location <- NULL
+
+# Keep only the variables required for the first model
+rent_model <- rent_model[, c(
+  "Monthly_Rent",
+  "Area_sqft",
+  "BHK_num",
+  "Bathrooms_num",
+  "Furnished",
+  "Property.Type"
+)]
+
+# Remove records missing required modelling variables
+rent_model <- rent_model[
+  complete.cases(rent_model),
+]
+
+# Check final dataset
+dim(rent_model)
+colSums(is.na(rent_model))
+str(rent_model)
+
+# Summary of final modelling variables
+summary(rent_model)
+
+# Count potentially extreme rents
+sum(rent_model$Monthly_Rent >= 1000000)
+
+# Check the highest rents
+head(
+  rent_model[
+    order(rent_model$Monthly_Rent, decreasing = TRUE),
+  ],
+  15
+)
+
+### 1.8.5 Finalising the Modelling Dataset
+
+The final preparation stage involved converting bedroom and bathroom counts into numeric variables, standardising furnishing categories, and selecting relevant predictors for the initial rental price model. Records with missing values in the selected modelling variables were excluded using complete-case analysis. Variables with substantial missingness or insufficient variation were excluded from the initial model. Extreme rental values were retained provisionally rather than removed without verification.
+
+The resulting dataset contains the target variable, monthly rent, and five potential predictors: property area, number of bedrooms, number of bathrooms, furnishing status, and property type.
+
+# Save the final modelling dataset
+write.csv(
+  rent_model,
+  "data/Mumbai_rent_cleaned.csv",
+  row.names = FALSE
+)
+
+# Final record count
+nrow(rent_model)
+
+## 1.9 EDA
+
+# Display two histograms side by side
+par(mfrow = c(1, 2))
+
+# Distribution of monthly rent
+hist(
+  rent_model$Monthly_Rent,
+  breaks = 50,
+  main = "Distribution of Monthly Rent",
+  xlab = "Monthly Rent (₹)",
+  col = "lightblue"
+)
+
+# Distribution of log-transformed monthly rent
+hist(
+  log(rent_model$Monthly_Rent),
+  breaks = 50,
+  main = "Distribution of Log Monthly Rent",
+  xlab = "Log Monthly Rent",
+  col = "lightgreen"
+)
+
+# Restore the default plotting layout
+par(mfrow = c(1, 1))
+
+# Key rental price statistics
+rent_statistics <- data.frame(
+  Statistic = c(
+    "Minimum",
+    "First Quartile",
+    "Median",
+    "Mean",
+    "Third Quartile",
+    "Maximum"
+  ),
+  Monthly_Rent = c(
+    min(rent_model$Monthly_Rent),
+    quantile(rent_model$Monthly_Rent, 0.25),
+    median(rent_model$Monthly_Rent),
+    mean(rent_model$Monthly_Rent),
+    quantile(rent_model$Monthly_Rent, 0.75),
+    max(rent_model$Monthly_Rent)
+  )
+)
+
+rent_statistics
+
+# Count rents above selected thresholds
+c(
+  Above_1_Lakh = sum(rent_model$Monthly_Rent > 100000),
+  Above_5_Lakh = sum(rent_model$Monthly_Rent > 500000),
+  Above_10_Lakh = sum(rent_model$Monthly_Rent >= 1000000)
+)
+
+## 1.9.1 Distribution of Monthly Rental Prices
+
+The distribution of monthly rental prices was examined using histograms and descriptive statistics. The original rent distribution shows substantial positive skewness, with most properties concentrated at the lower end of the rental price range and a small number of extremely high-value observations extending the distribution.
+
+The median monthly rent is ₹70,000, compared with a mean of approximately ₹124,264. This difference indicates that high rental values have a considerable influence on the average rent.
+
+The threshold analysis identified 6,106 properties with monthly rents above ₹1 lakh, 351 above ₹5 lakh, and 99 with rents of ₹10 lakh or more. The maximum recorded monthly rent is ₹4 crore.
+
+A logarithmic transformation of monthly rent produced a more balanced distribution, reducing the influence of extreme values and making the overall pattern easier to examine. This suggests that log-transformed rent may be a suitable alternative target variable for subsequent regression modelling.
+
+The extreme observations have been retained at this stage and will be considered during model development and evaluation.
+
+## 1.9.2 Relationship Between Property Area and Monthly Rent
+
+# Scatterplot: Area versus Monthly Rent
+plot(
+  rent_model$Area_sqft,
+  rent_model$Monthly_Rent,
+  main = "Monthly Rent vs Property Area",
+  xlab = "Property Area (sq. ft.)",
+  ylab = "Monthly Rent (₹)",
+  pch = 16,
+  cex = 0.5,
+  col = rgb(0, 0, 1, 0.25)
+)
+
+plot(
+  rent_model$Area_sqft,
+  log(rent_model$Monthly_Rent),
+  main = "Log Monthly Rent vs Property Area",
+  xlab = "Property Area (sq. ft.)",
+  ylab = "Log Monthly Rent",
+  pch = 16,
+  cex = 0.5,
+  col = rgb(0, 0.5, 0, 0.25)
+)
+
+cor(
+  rent_model$Area_sqft,
+  rent_model$Monthly_Rent
+)
+
+cor(
+  rent_model$Area_sqft,
+  log(rent_model$Monthly_Rent)
+)
+
+#### 1.9.2 Relationship Between Property Area and Monthly Rent
+
+The relationship between property area and monthly rental price was investigated using scatterplots and Pearson correlation coefficients.
+
+The scatterplot using raw monthly rent showed that extreme rental values substantially compressed the majority of observations near the bottom of the graph, making the underlying relationship difficult to identify.
+
+After applying a logarithmic transformation to monthly rent, the distribution of observations became more visible and a positive relationship between property area and rental price could be observed.
+
+The Pearson correlation between property area and raw monthly rent was approximately 0.179, indicating a weak positive association. However, the correlation between property area and log-transformed monthly rent increased to approximately 0.749, indicating a strong positive association.
+
+These findings suggest that logarithmic transformation provides a more informative representation of the relationship between property area and rental price. Therefore, log-transformed monthly rent will be considered as an alternative target variable during predictive model development.
+
+The analysis also indicates that property area alone may not fully explain rental price variation, highlighting the importance of investigating additional property characteristics.
+
+## 1.9.3 Relationship Between Property Characteristics and Monthly Rent
+
+boxplot(
+  log(Monthly_Rent) ~ BHK_num,
+  data = rent_model,
+  main = "Log Monthly Rent by Number of Bedrooms",
+  xlab = "Number of Bedrooms (BHK)",
+  ylab = "Log Monthly Rent",
+  col = "lightblue"
+)
+
+boxplot(
+  log(Monthly_Rent) ~ Furnished,
+  data = rent_model,
+  main = "Log Monthly Rent by Furnishing Status",
+  xlab = "Furnishing Status",
+  ylab = "Log Monthly Rent",
+  col = "lightgreen",
+  las = 2
+)
+
+par(mar = c(10, 4, 4, 2))
+
+boxplot(
+  log(Monthly_Rent) ~ Property.Type,
+  data = rent_model,
+  main = "Log Monthly Rent by Property Type",
+  xlab = "",
+  ylab = "Log Monthly Rent",
+  col = "lightyellow",
+  las = 2,
+  cex.axis = 0.8
+)
+
+par(mar = c(5, 4, 4, 2))
+
+# Median rent by BHK
+aggregate(
+  Monthly_Rent ~ BHK_num,
+  data = rent_model,
+  FUN = median
+)
+
+# Median rent by furnishing status
+aggregate(
+  Monthly_Rent ~ Furnished,
+  data = rent_model,
+  FUN = median
+)
+
+# Median rent by property type
+aggregate(
+  Monthly_Rent ~ Property.Type,
+  data = rent_model,
+  FUN = median
+)
+
+table(rent_model$Property.Type)
+
+aggregate(
+  Monthly_Rent ~ Property.Type,
+  data = rent_model,
+  FUN = median
+)
+
+## 1.9.3 Relationship Between Monthly Rent, Bedroom Count and Furnishing Status
+
+The relationship between monthly rental prices and selected property characteristics was examined using boxplots and median rental prices.
+
+The results indicate a general increase in median rent with the number of bedrooms. Properties with one bedroom have a median monthly rent of ₹35,000, compared with ₹1,30,000 for three-bedroom properties and ₹2,80,000 for four-bedroom properties. The median rent reaches ₹7,30,000 for seven-bedroom properties. However, the median decreases slightly between five-bedroom and six-bedroom properties, indicating that the relationship is not perfectly consistent.
+
+Rental prices were also compared across furnishing categories. Furnished and semi-furnished properties both have a median monthly rent of ₹80,000, while unfurnished properties have a lower median of ₹55,000.
+
+These findings suggest that bedroom count and furnishing status may provide useful information for predicting rental prices. However, the observed differences may also reflect property area, location and other characteristics. Categories with relatively few observations should be interpreted cautiously.
+
+## 1.9.4 Relationship Between Numerical Property Variables
+
+# Correlation matrix for numerical variables
+numeric_variables <- rent_model[, c(
+  "Monthly_Rent",
+  "Area_sqft",
+  "BHK_num",
+  "Bathrooms_num"
+)]
+
+cor(numeric_variables)
+
+# Correlation matrix using log-transformed rent
+numeric_variables$Monthly_Rent <- log(
+  numeric_variables$Monthly_Rent
+)
+
+cor(numeric_variables)
+
+table(rent_model$BHK_num)
+
+#### 1.9.4 Relationship Between Numerical Property Variables
+
+Pearson correlation analysis was conducted to examine the relationships between monthly rental prices, property area, bedroom count and bathroom count.
+
+Using raw monthly rent, the correlations with area, BHK and bathrooms were approximately 0.179, 0.137 and 0.145 respectively. These values indicate relatively weak positive linear associations.
+
+After logarithmic transformation of monthly rent, the corresponding correlations increased to approximately 0.749, 0.739 and 0.718. This indicates strong positive associations between log-transformed rent and the three numerical property characteristics.
+
+The analysis also identified relatively high correlations between the predictors themselves. Area and BHK had a correlation of 0.816, area and bathrooms had a correlation of 0.808, and BHK and bathrooms had a correlation of 0.859. These relationships indicate potential multicollinearity, which will be investigated during regression modelling.
+
+The distribution of bedroom counts showed that the dataset is dominated by one-, two- and three-bedroom properties, accounting for most observations. Properties with six and seven bedrooms have considerably fewer observations, which may limit the reliability of estimates for these categories.
+
+Overall, the findings support the use of property area, bedroom count and bathroom count as potential predictors of log-transformed rental prices. However, their overlapping information should be considered during model development.
+
+### 1.10 Summary of Exploratory Data Analysis
+
+The exploratory data analysis examined the distribution of monthly rental prices and their relationships with selected property characteristics.
+
+The analysis identified substantial positive skewness in monthly rental prices. The median rent was ₹70,000, compared with a mean of approximately ₹124,264. Logarithmic transformation produced a more balanced distribution and revealed clearer relationships between rental prices and numerical property characteristics.
+
+Property area demonstrated a strong positive correlation of approximately 0.749 with log-transformed rent. Bedroom count and bathroom count also showed strong positive correlations of approximately 0.739 and 0.718 respectively.
+
+Categorical analysis indicated differences in median rental prices across bedroom counts, furnishing statuses and property types. In general, properties with more bedrooms and certain property categories commanded higher median rents.
+
+The correlation analysis also identified potential multicollinearity between area, bedroom count and bathroom count. This will require further investigation during regression modelling.
+
+A limitation identified during the analysis is the presence of unusually high rental values and substantial differences in sample sizes across property categories. Additionally, the available dataset does not provide sufficient neighbourhood-level variation to investigate geographic rental differences or accessibility to amenities.
+
+The EDA findings provide a foundation for developing and evaluating regression models to predict monthly residential rental prices.
+
