@@ -914,3 +914,502 @@ A limitation identified during the analysis is the presence of unusually high re
 
 The EDA findings provide a foundation for developing and evaluating regression models to predict monthly residential rental prices.
 
+## 1.11 Predictive Modelling
+
+## 1.11.1 Prepare training and testing datasets
+
+# Load required package
+library(caret)
+
+# Reproducible train-test split
+set.seed(123)
+
+train_index <- createDataPartition(
+  rent_model$Monthly_Rent,
+  p = 0.80,
+  list = FALSE
+)
+
+train_data <- rent_model[train_index, ]
+test_data  <- rent_model[-train_index, ]
+
+# Check dataset sizes
+nrow(train_data)
+nrow(test_data)
+
+## 1.11.2 Build the first regression model
+
+# Multiple Linear Regression: Raw Rent
+model_raw <- lm(
+  Monthly_Rent ~ Area_sqft + BHK_num +
+    Bathrooms_num + Furnished + Property.Type,
+  data = train_data
+)
+
+summary(model_raw)
+
+### 1.11.3 Interpretation of Model 1 — Raw Monthly Rent
+
+A multiple linear regression model was developed to predict monthly residential rent using property area, number of bedrooms (BHK), number of bathrooms, furnishing status and property type.
+
+The model was statistically significant overall (F-statistic = 50.37, p-value < 0.001). However, its explanatory power was low, with an R-squared value of 0.0315 and an adjusted R-squared value of 0.0309. This indicates that the selected property characteristics explained approximately 3.15% of the variation in monthly rental prices.
+
+The coefficient analysis produced the following findings:
+
+- **Area:** Had a positive and statistically significant relationship with monthly rent (coefficient = 140.1, p < 0.001).
+- **BHK:** Had a negative and statistically significant coefficient (-23,736, p = 0.027), which may be influenced by correlations among property characteristics.
+- **Bathrooms:** Was not statistically significant (p = 0.131).
+- **Furnishing:** Unfurnished properties had significantly lower estimated rents than furnished properties, while semi-furnished properties did not show a statistically significant difference.
+- **Property Type:** None of the property-type categories showed a statistically significant relationship with rent at the 5% significance level.
+
+The residual standard error was approximately ₹581,300, indicating substantial prediction errors. The very large maximum residual also suggests that extreme rental observations may be influencing model performance.
+
+Overall, Model 1 showed limited predictive performance when monthly rent was modelled on its original scale. Therefore, a second model using log-transformed monthly rent will be developed to examine whether the transformation improves model fit and prediction performance.
+
+## 1.11.4 Build Model 2 — Log-transformed Rent
+
+# Create log-transformed target
+train_data$Log_Rent <- log(train_data$Monthly_Rent)
+test_data$Log_Rent  <- log(test_data$Monthly_Rent)
+
+# Multiple Linear Regression: Log Rent
+model_log <- lm(
+  Log_Rent ~ Area_sqft + BHK_num +
+    Bathrooms_num + Furnished + Property.Type,
+  data = train_data
+)
+
+summary(model_log)
+
+### 1.11.5 Interpretation of Model 2 — Log-transformed Monthly Rent
+
+A second multiple linear regression model was developed using the natural logarithm of monthly rent as the dependent variable. The same property characteristics used in Model 1 were retained to allow comparison.
+
+The model was statistically significant overall (F-statistic = 2736, p-value < 0.001). It achieved an R-squared value of 0.6386 and an adjusted R-squared value of 0.6384, indicating that approximately 63.86% of the variation in log-transformed monthly rent was explained by the selected predictors.
+
+The coefficient analysis showed the following:
+
+- **Area:** Had a positive and statistically significant relationship with log rent (coefficient = 0.000425, p < 0.001).
+- **BHK:** Had a positive and statistically significant relationship (coefficient = 0.2725, p < 0.001).
+- **Bathrooms:** Had a positive and statistically significant relationship (coefficient = 0.1381, p < 0.001).
+- **Furnishing:** Semi-furnished and unfurnished properties had lower estimated log rents than furnished properties.
+- **Property Type:** All listed property-type categories had negative and statistically significant coefficients compared with the reference category, Apartment.
+
+The residual standard error was 0.5334. Compared with Model 1, the log-transformed model showed substantially improved explanatory power and a more manageable residual scale.
+
+However, the coefficients should be interpreted cautiously because area, BHK and bathrooms are strongly correlated. In addition, some property-type categories have very small sample sizes, which may make their estimated coefficients less reliable.
+
+Overall, Model 2 appears more suitable than Model 1 for explaining rental price variation. Its actual predictive performance will be assessed using the test dataset in the next stage.
+
+## 1.11.6 Check Multicollinearity
+
+# Install once if not already installed
+install.packages("car")
+
+# Load package
+library(car)
+
+# Check multicollinearity
+vif(model_log)
+
+### 1.11.6 Multicollinearity Assessment
+
+Multicollinearity was assessed using the Variance Inflation Factor (VIF). For categorical predictors with multiple degrees of freedom, the adjusted GVIF measure (GVIF^(1/(2*Df))) was considered.
+
+The adjusted VIF values were 1.876 for Area_sqft, 2.149 for BHK_num, 2.114 for Bathrooms_num, 1.007 for Furnished and 1.004 for Property.Type.
+
+All adjusted VIF values were below 5, indicating that multicollinearity was not severe enough to require the removal of any predictors.
+
+Therefore, all selected explanatory variables were retained for subsequent model evaluation.
+
+## 1.11.7 Evaluate Model Predictions
+
+# Model 1: Predict raw monthly rent
+pred_raw <- predict(model_raw, newdata = test_data)
+
+# Model 2: Predict log rent and convert back to rupees
+pred_log <- predict(model_log, newdata = test_data)
+pred_log_rent <- exp(pred_log)
+
+# Actual rent
+actual_rent <- test_data$Monthly_Rent
+
+# Evaluation metrics
+calculate_metrics <- function(actual, predicted) {
+  data.frame(
+    RMSE = sqrt(mean((actual - predicted)^2)),
+    MAE = mean(abs(actual - predicted)),
+    R_squared = 1 - sum((actual - predicted)^2) /
+      sum((actual - mean(actual))^2)
+  )
+}
+
+# Compare models
+metrics_raw <- calculate_metrics(actual_rent, pred_raw)
+metrics_log <- calculate_metrics(actual_rent, pred_log_rent)
+
+model_comparison <- rbind(
+  Raw_Rent_Model = metrics_raw,
+  Log_Rent_Model = metrics_log
+)
+
+model_comparison
+
+### 1.11.7 Model Performance Comparison
+
+The predictive performance of the raw-rent and log-rent regression models was evaluated using the same test dataset of 3,871 observations. RMSE, MAE and test R-squared were used as evaluation metrics.
+
+The raw-rent model achieved an RMSE of ₹498,536.70, an MAE of ₹57,585.64 and a test R-squared of 0.0403. The log-rent model achieved an RMSE of ₹502,989.10, an MAE of ₹53,893.02 and a test R-squared of 0.0231.
+
+The log-rent model produced a lower MAE, indicating a smaller average absolute prediction error. However, the raw-rent model performed slightly better in terms of RMSE and test R-squared.
+
+Despite the log-rent model's substantially higher training R-squared, its test R-squared was considerably lower. This indicates a substantial difference between training and test performance and suggests limited generalisation to unseen observations.
+
+Overall, neither model currently demonstrates strong predictive performance on the test dataset. The results also indicate that the choice of evaluation metric affects which model appears preferable. Further investigation of prediction errors, extreme rental observations and regression diagnostics is therefore necessary before selecting a final model.
+
+## 1.11.8 Investigate Prediction Errors
+
+# Prediction error summary
+error_raw <- actual_rent - pred_raw
+error_log <- actual_rent - pred_log_rent
+
+summary(error_raw)
+summary(error_log)
+
+# Compare actual and predicted rent
+par(mfrow = c(1, 2))
+
+plot(actual_rent, pred_raw,
+     main = "Raw Rent Model",
+     xlab = "Actual Rent",
+     ylab = "Predicted Rent",
+     pch = 16, cex = 0.5)
+
+abline(0, 1, col = "red", lwd = 2)
+
+plot(actual_rent, pred_log_rent,
+     main = "Log Rent Model",
+     xlab = "Actual Rent",
+     ylab = "Predicted Rent",
+     pch = 16, cex = 0.5)
+
+abline(0, 1, col = "red", lwd = 2)
+
+par(mfrow = c(1, 1))
+
+## 1.11.8 Interpretation of Prediction Errors
+
+The actual-versus-predicted plots for both regression models revealed that a small number of extremely high rental observations substantially affected the visualisation. One observation had an actual rent of approximately ₹3 crore, while both models predicted a much lower value. Several other high-rent observations were also considerably under-predicted.
+
+The raw-rent model produced some negative predictions, which are not realistic for monthly rental prices. Its prediction errors also appeared to increase with predicted rent, suggesting possible heteroscedasticity.
+
+The log-rent model produced positive predictions after back-transformation and achieved a lower MAE than the raw-rent model. However, some observations were substantially over-predicted, and the model did not achieve better RMSE or test R-squared.
+
+The log-rent predictions were obtained by exponentiating the predicted log values. These predictions estimate the conditional median under the log-normal error assumption rather than the conditional mean. A smearing correction may therefore be considered if the objective is to estimate mean rental prices.
+
+Overall, the plots indicate that extreme observations and prediction errors require further investigation. The models cannot yet be considered reliable for practical rent prediction.
+
+## 1.11.9 Investigate Extreme Rental Observations
+
+# Examine the 15 highest-rent test observations
+outlier_check <- data.frame(
+  Actual_Rent = test_data$Monthly_Rent,
+  Predicted_Raw = pred_raw,
+  Predicted_Log = pred_log_rent,
+  Area_sqft = test_data$Area_sqft,
+  BHK = test_data$BHK_num,
+  Bathrooms = test_data$Bathrooms_num,
+  Furnished = test_data$Furnished,
+  Property_Type = test_data$Property.Type
+)
+
+outlier_check <- outlier_check[
+  order(-outlier_check$Actual_Rent),
+]
+
+head(outlier_check, 15)
+
+## 1.11.10 Sensitivity Analysis — Extreme Rental Values
+
+# Create a dataset excluding rents above ₹10 lakh
+rent_model_sensitivity <- rent_model[
+  rent_model$Monthly_Rent <= 1000000, ]
+
+# Check observations removed
+nrow(rent_model)
+nrow(rent_model_sensitivity)
+
+# Recreate train-test split
+set.seed(123)
+
+train_index_sens <- createDataPartition(
+  rent_model_sensitivity$Monthly_Rent,
+  p = 0.80,
+  list = FALSE
+)
+
+train_sens <- rent_model_sensitivity[train_index_sens, ]
+test_sens <- rent_model_sensitivity[-train_index_sens, ]
+
+# Fit log-rent model
+model_log_sens <- lm(
+  log(Monthly_Rent) ~ Area_sqft + BHK_num +
+    Bathrooms_num + Furnished + Property.Type,
+  data = train_sens
+)
+
+# Predict and evaluate
+pred_sens <- exp(predict(model_log_sens, newdata = test_sens))
+
+actual_sens <- test_sens$Monthly_Rent
+
+calculate_metrics(actual_sens, pred_sens)
+
+### 1.11.10 Sensitivity Analysis — Extreme Rental Values
+
+A sensitivity analysis was conducted to investigate the influence of extreme rental observations on predictive performance. A separate modelling dataset was created by excluding properties with monthly rents exceeding ₹10 lakh. This removed 69 observations from the original 19,362 records, leaving 19,293 observations.
+
+A log-transformed multiple linear regression model was fitted using the same explanatory variables and an 80:20 training-testing split.
+
+The sensitivity model achieved an RMSE of ₹103,075.60, an MAE of ₹41,294.55 and a test R-squared of 0.1727.
+
+Compared with the original log-rent model, the sensitivity model showed substantial improvements across all three evaluation metrics. This indicates that a small number of extremely high rental observations had a considerable influence on predictive performance.
+
+However, the threshold was selected for sensitivity analysis and does not establish that every excluded observation was erroneous. The original dataset was therefore retained, while the filtered dataset was used to assess model performance under reduced influence from extreme rental values.
+
+The results suggest that the log-rent model performs more effectively when extreme rental observations are excluded, although further improvements are required to achieve stronger predictive accuracy.
+
+## 1.11.11 Final model diagnostics
+
+# Regression diagnostic plots
+par(mfrow = c(2, 2))
+plot(model_log_sens)
+par(mfrow = c(1, 1))
+
+# Heteroscedasticity test
+library(lmtest)
+bptest(model_log_sens)
+
+# Residual normality summary
+summary(residuals(model_log_sens))
+
+### 1.11.11 Regression Diagnostic Assessment
+
+The regression assumptions of the sensitivity log-rent model were examined using four standard diagnostic plots and the Breusch–Pagan test.
+
+**1. Residuals vs Fitted**
+
+The residuals were generally centred around zero across the middle range of fitted values. However, the smoother showed downward curvature at higher fitted values, suggesting that the model may not fully capture the relationship for expensive properties. This indicates possible non-linearity and systematic prediction errors at the upper end.
+
+**2. Normal Q-Q Plot**
+
+The residuals approximately followed the reference line in the middle but deviated substantially at both tails. This suggests heavy-tailed residuals and the presence of unusually large prediction errors. Consequently, the normality assumption is not fully satisfied.
+
+**3. Scale-Location Plot**
+
+The red smoother was not completely horizontal, indicating variation in residual spread across fitted values. This visual finding was supported by the Breusch–Pagan test (BP = 456.22, p < 0.001), which provided strong statistical evidence of heteroscedasticity.
+
+**4. Residuals vs Leverage**
+
+Most observations had relatively low leverage, although a small number of observations showed unusually high leverage. These observations warrant further investigation because they may have an influence on the fitted regression model.
+
+Overall, the diagnostic assessment indicates that the log-rent regression model does not fully satisfy the assumptions of constant variance, normally distributed residuals and linearity. Although the log transformation improved model performance, further refinement or alternative modelling approaches may be required.
+
+## 1.12 Random Forest Modelling
+
+## 1.12.1 Train the Random Forest Model
+
+install.packages("randomForest")  # Run only once
+library(randomForest)
+
+set.seed(123)
+
+model_rf <- randomForest(
+  Monthly_Rent ~ Area_sqft + BHK_num +
+    Bathrooms_num + Furnished + Property.Type,
+  data = train_sens,
+  ntree = 500,
+  importance = TRUE
+)
+
+# Model results
+print(model_rf)
+
+# Variable importance
+importance(model_rf)
+varImpPlot(model_rf)
+
+## 1.12.2 Evaluate Random Forest Performance
+
+# Predict on test data
+pred_rf <- predict(model_rf, newdata = test_sens)
+
+# Calculate performance
+metrics_rf <- calculate_metrics(
+  actual_sens,
+  pred_rf
+)
+
+metrics_rf
+
+### 1.12 Random Forest Modelling
+
+#### 1.12.1 Model Development
+
+A Random Forest regression model was developed using 500 decision trees and the predictors Area_sqft, BHK_num, Bathrooms_num, Furnished, and Property.Type. The model was trained on the sensitivity dataset, using the same training data as the sensitivity log-linear regression model.
+
+The model explained 66.95% of the variation in the training data. This indicates that the Random Forest captured relationships between property characteristics and rental prices more effectively than the linear regression approach.
+
+#### 1.12.2 Model Evaluation and Variable Importance
+
+The Random Forest achieved a test RMSE of ₹63,766.83, an MAE of ₹37,838.30, and an R-squared of 0.6834. This means it explained approximately 68.34% of the variation in rental prices in the test dataset.
+
+Area was the most important predictor according to the percentage increase in mean squared error (%IncMSE), followed by bathrooms and BHK. Furnishing and property type had comparatively lower importance.
+
+These results suggest that the Random Forest provides substantially better predictive performance than the sensitivity log-linear regression model. Variable importance indicates predictive contribution, rather than a causal relationship between a property characteristic and rent.
+
+## 1.12.3 Comparison of Predictive Models
+
+final_comparison <- rbind(
+  Log_Linear_Sensitivity = calculate_metrics(
+    actual_sens,
+    pred_sens
+  ),
+  Random_Forest = calculate_metrics(
+    actual_sens,
+    pred_rf
+  )
+)
+
+round(final_comparison, 3)
+
+#### 1.12.3 Comparison of Predictive Models
+
+The performance of the Random Forest model was compared with the sensitivity log-linear regression model using the same test dataset.
+
+The Random Forest achieved an RMSE of ₹63,766.83 and an MAE of ₹37,838.30, compared with ₹103,075.63 and ₹41,294.55 respectively for the log-linear regression model. Its test R-squared was 0.683, substantially higher than the regression model's 0.173.
+
+These results indicate that the Random Forest captured approximately 68.3% of the variation in test rental prices, compared with 17.3% for the log-linear model. The Random Forest also reduced RMSE by approximately 38.1% and MAE by approximately 8.4%.
+
+Therefore, the Random Forest was selected as the preferred predictive model for this study. Its stronger performance suggests that non-linear relationships between property characteristics and rental prices are important in this dataset.
+
+However, the model's performance should be interpreted in the context of the available data. The dataset contains limited geographic variation and does not include neighbourhood-level amenity accessibility. Consequently, the model cannot yet address the full geographic dimension of the research question. Further validation using independent rental listings and more detailed location data would strengthen the findings.
+
+## 1.13 Final Model Validation and Limitations
+
+## 1.13.1 Save the final model and predictions
+
+saveRDS(model_rf, "data/random_forest_model.rds")
+
+write.csv(
+  data.frame(
+    Actual_Rent = actual_sens,
+    Predicted_Rent = pred_rf
+  ),
+  "data/random_forest_predictions.csv",
+  row.names = FALSE
+)
+
+## 1.13.2 Check prediction performance
+
+# Calculate prediction errors
+rf_errors <- actual_sens - pred_rf
+
+summary(rf_errors)
+
+# Calculate percentage of predictions within 20% error
+within_20 <- mean(
+  abs(rf_errors) / actual_sens <= 0.20
+) * 100
+
+within_20
+
+#### 1.13.1 Final Model Validation
+
+The selected Random Forest model and its test predictions were saved for future use and reproducibility.
+
+Prediction errors were calculated by subtracting predicted rental prices from actual rental prices. The median prediction error was -₹10,704, indicating a tendency towards overprediction for a typical test observation. The mean error was -₹1,488, suggesting a relatively small average signed error, although individual prediction errors varied considerably.
+
+The minimum error was -₹352,524, while the maximum error was ₹613,177, demonstrating that some rental listings were substantially overpredicted or underpredicted.
+
+An additional accuracy assessment showed that approximately 33.42% of test predictions were within 20% of their actual rental prices. This indicates that, although the Random Forest achieved better overall performance than the regression models, its accuracy for individual property predictions remains limited.
+
+Overall, the Random Forest provides the strongest predictive performance among the models evaluated, but its predictions should be interpreted with caution.
+
+#### 1.13.2 Limitations of the Predictive Model
+
+The analysis has several limitations:
+
+1. **Geographic limitation:** The dataset contains only Mumbai as a location value, preventing analysis of rental differences between individual neighbourhoods.
+
+2. **Limited amenity information:** The dataset does not provide structured information about accessibility to public transport, schools, hospitals, shopping facilities, or other neighbourhood amenities.
+
+3. **Extreme rental values:** Some unusually high rental listings may represent luxury properties or potentially unreliable observations, affecting model performance.
+
+4. **Prediction accuracy:** Although the Random Forest performed better than the regression models, only 33.42% of test predictions were within 20% of actual rental prices.
+
+5. **Dataset representativeness:** The results are based on the available listings and may not fully represent the entire Mumbai rental housing market.
+
+These limitations should be considered when interpreting the model's predictions and applying the findings to real-world rental decisions.
+
+## 1.14 Overall Project Conclusion
+
+The objective of this project was to investigate whether monthly residential rental prices in Mumbai could be predicted using property characteristics and geographic information.
+
+The analysis began with data cleaning and preparation, resulting in a final modelling dataset containing 19,362 observations. Exploratory Data Analysis identified important relationships between rental prices, property area, number of bedrooms, bathrooms, furnishing status, and property type.
+
+Three predictive approaches were evaluated: multiple linear regression using raw rental prices, log-linear regression, and Random Forest regression. A sensitivity analysis was also conducted by excluding rental observations above ₹10 lakh to assess the influence of extreme values.
+
+The Random Forest model achieved the strongest test performance, with an RMSE of ₹63,766.83, an MAE of ₹37,838.30, and an R-squared of 0.683. It performed substantially better than the sensitivity log-linear regression model, which achieved a test R-squared of 0.173.
+
+The results suggest that property characteristics contain useful information for predicting monthly rental prices and that non-linear modelling can improve predictive performance.
+
+However, the research question could only be partially addressed. The available dataset did not contain sufficient neighbourhood-level geographic variation or structured amenity accessibility information. Consequently, the influence of location and neighbourhood amenities could not be evaluated.
+
+Overall, the project demonstrates the potential of machine learning for residential rental price prediction in Mumbai. Further improvements in geographic data coverage, data quality, and model validation would be necessary to develop a more comprehensive and reliable rental price prediction system.
+
+## 1.15 Recommendations and Future Improvements
+
+Based on the findings and limitations of this analysis, the following improvements are recommended:
+
+1. **Collect neighbourhood-level data:** Obtain rental listings with specific locality information to investigate geographical differences in rental prices across Mumbai.
+
+2. **Include neighbourhood amenities:** Incorporate accessibility measures for railway stations, metro stations, schools, hospitals, shopping centres, and other important facilities.
+
+3. **Improve data quality:** Investigate unusually high rental values, inconsistent property areas, and potentially incorrect listing information before model development.
+
+4. **Explore additional predictive models:** Evaluate alternative machine learning algorithms, including Gradient Boosting and XGBoost, to determine whether predictive performance can be improved.
+
+5. **Improve model validation:** Use cross-validation and additional independent datasets to assess whether the selected model generalises to new rental listings.
+
+6. **Develop a practical prediction application:** Use the selected model as the foundation for a system where users can enter property characteristics and obtain an estimated monthly rental price.
+
+These improvements could help develop a more accurate and comprehensive residential rental price prediction system for Mumbai.
+
+
+# Check project directory
+getwd()
+
+# Check important files
+file.exists("project_notebook.Rmd")
+file.exists("data/Mumbai_rent_cleaned.csv")
+file.exists("data/random_forest_model.rds")
+file.exists("data/random_forest_predictions.csv")
+
+# List files in data folder
+list.files("data")
+
+# Reload saved model
+final_model <- readRDS("data/random_forest_model.rds")
+
+# Display model
+print(final_model)
+
+# Check prediction file
+final_predictions <- read.csv(
+  "data/random_forest_predictions.csv"
+)
+
+dim(final_predictions)
+head(final_predictions)
+
